@@ -642,7 +642,7 @@ build_squeasel() {
   SQUEASEL_BDIR=$TP_BUILD_DIR/$SQUEASEL_NAME$MODE_SUFFIX
   mkdir -p $SQUEASEL_BDIR
   pushd $SQUEASEL_BDIR
-  ${CC:-gcc} $EXTRA_CFLAGS $OPENSSL_CFLAGS $OPENSSL_LDFLAGS -std=c99 -O3 -DNDEBUG -fPIC -c "$SQUEASEL_SOURCE/squeasel.c"
+  ${CC:-gcc} $EXTRA_CFLAGS $OPENSSL_CFLAGS $OPENSSL_LDFLAGS -std=c99 -O3 -DNDEBUG -DUSE_IPV6 -fPIC -c "$SQUEASEL_SOURCE/squeasel.c"
   ar rs libsqueasel.a squeasel.o
   cp libsqueasel.a $PREFIX/lib/
   cp $SQUEASEL_SOURCE/squeasel.h $PREFIX/include/

@@ -16,12 +16,15 @@
 // under the License.
 #pragma once
 
+#include <sys/un.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "kudu/util/int128.h"
 #include "kudu/util/status.h"
 
 namespace kudu {
@@ -47,7 +50,7 @@ class HostPort {
   // Parse a <host>:<port> pair into this object.
   // If there is no port specified in the string, then 'default_port' is used.
   //
-  // Note that <host> cannot be in IPv6 address notation.
+  // Note that <host> can be in IPv6 address notation.
   Status ParseString(const std::string& str, uint16_t default_port);
 
   // Similar to above but allow the address to have scheme and path, e.g.
@@ -92,11 +95,13 @@ class HostPort {
   // "inverse" of ParseStrings().
   static std::string ToCommaSeparatedString(const std::vector<HostPort>& host_ports);
 
-  // Returns true if addr is within 127.0.0.0/8 range.
-  static bool IsLoopback(uint32_t addr);
+  // Returns true if addr is within "127.0.0.0/8" or "::1" range.
+  static bool IsLoopback(sa_family_t family, uint128_t addr);
 
-  // Returns dotted-decimal ('1.2.3.4') representation of IP address in addr.
-  static std::string AddrToString(uint32_t addr);
+  // Returns a common representation of IP address in addr.
+  //
+  // REQUIRES: addr should be in big-endian byte order.
+  static std::string AddrToString(sa_family_t family, const void* addr);
 
  private:
   std::string host_;
@@ -128,7 +133,7 @@ typedef std::unordered_set<HostPort, HostPortHasher, HostPortEqualityPredicate>
 class Network {
  public:
   Network();
-  Network(uint32_t addr, uint32_t netmask);
+  Network(sa_family_t family, uint128_t addr, uint128_t netmask);
 
   uint32_t addr() const { return addr_; }
 
@@ -151,8 +156,9 @@ class Network {
   static Status ParseCIDRStrings(
       const std::string& comma_sep_addrs, std::vector<Network>* res);
  private:
-  uint32_t addr_;
-  uint32_t netmask_;
+  sa_family_t family_;
+  uint128_t addr_;
+  uint128_t netmask_;
 };
 
 // Parse and resolve the given comma-separated list of addresses.

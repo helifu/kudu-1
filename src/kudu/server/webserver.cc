@@ -51,6 +51,7 @@
 #include "kudu/gutil/strings/stringpiece.h"
 #include "kudu/gutil/strings/strip.h"
 #include "kudu/gutil/strings/substitute.h"
+#include "kudu/gutil/strings/util.h"
 #include "kudu/security/gssapi.h"
 #include "kudu/security/openssl_util.h"
 #include "kudu/util/easy_json.h"
@@ -176,7 +177,11 @@ Webserver::Webserver(const WebserverOptions& opts)
   : opts_(opts),
     context_(nullptr) {
   string host = opts.bind_interface.empty() ? "0.0.0.0" : opts.bind_interface;
-  http_address_ = host + ":" + std::to_string(opts.port);
+  if (strcount(host, ':') > 1) {
+    http_address_ = "[" + host + "]:" + std::to_string(opts.port);
+  } else {
+    http_address_ = host + ":" + std::to_string(opts.port);
+  }
 }
 
 Webserver::~Webserver() {
@@ -350,7 +355,7 @@ Status Webserver::Start() {
   signal(SIGCHLD, sig_chld);
 
   if (context_ == nullptr) {
-    Sockaddr addr;
+    Sockaddr addr = Sockaddr::Wildcard();
     addr.set_port(opts_.port);
     TryRunLsof(addr);
     string err_msg = Substitute("Webserver: could not start on address $0", http_address_);
@@ -408,7 +413,9 @@ Status Webserver::GetBoundAddresses(std::vector<Sockaddr>* addrs) const {
   addrs->reserve(num_addrs);
 
   for (int i = 0; i < num_addrs; i++) {
-    addrs->push_back(Sockaddr(*sockaddrs[i]));
+    socklen_t len = (AF_INET == sockaddrs[i]->sin_family) ?
+                    sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+    addrs->push_back(Sockaddr(*reinterpret_cast<sockaddr*>(sockaddrs[i]), len));
     free(sockaddrs[i]);
   }
   free(sockaddrs);

@@ -569,7 +569,7 @@ Status ReactorThread::FindOrStartConnection(const ConnectionId& conn_id,
 
   // Create a new socket and start connecting to the remote.
   Socket sock;
-  RETURN_NOT_OK(CreateClientSocket(&sock));
+  RETURN_NOT_OK(CreateClientSocket(conn_id.remote().family(), &sock));
   RETURN_NOT_OK(StartConnect(&sock, conn_id.remote()));
 
   unique_ptr<Socket> new_socket(new Socket(sock.Release()));
@@ -652,9 +652,9 @@ void ReactorThread::CompleteConnectionNegotiation(
   conn->EpollRegister(loop_);
 }
 
-Status ReactorThread::CreateClientSocket(Socket* sock) {
-  Status ret = sock->Init(Socket::FLAG_NONBLOCKING);
-  if (ret.ok()) {
+Status ReactorThread::CreateClientSocket(int family, Socket* sock) {
+  Status ret = sock->Init(family, Socket::FLAG_NONBLOCKING);
+  if (ret.ok() && (family == AF_INET || family == AF_INET6)) {
     ret = sock->SetNoDelay(true);
   }
   LOG_IF(WARNING, !ret.ok())

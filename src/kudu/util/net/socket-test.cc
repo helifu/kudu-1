@@ -17,15 +17,17 @@
 
 #include "kudu/util/net/socket.h"
 
-#include <thread>
+#include <unistd.h>
 
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <thread>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <memory>
-#include <stddef.h>
-#include <string>
 
+#include "kudu/gutil/strings/substitute.h"
 #include "kudu/util/monotime.h"
 #include "kudu/util/net/sockaddr.h"
 #include "kudu/util/slice.h"
@@ -33,6 +35,7 @@
 #include "kudu/util/test_macros.h"
 #include "kudu/util/test_util.h"
 
+using std::string;
 
 namespace kudu {
 
@@ -40,16 +43,31 @@ constexpr size_t kEchoChunkSize = 32 * 1024 * 1024;
 
 class SocketTest : public KuduTest {
  protected:
-  void DoTest(bool accept, const std::string &message) {
+  Socket listener_;
+  Sockaddr listen_addr_;
+
+  void BindAndListen(const string& addr_str) {
     Sockaddr address;
-    address.ParseString("0.0.0.0", 0);
-    Socket listener_;
+    ASSERT_OK(address.ParseString(addr_str, 0));
+    BindAndListen(address);
+  }
 
-    CHECK_OK(listener_.Init(0));
+  void BindAndListen(const Sockaddr& address) {
+    CHECK_OK(listener_.Init(address.family(), 0));
     CHECK_OK(listener_.BindAndListen(address, 0));
-    Sockaddr listen_address;
-    CHECK_OK(listener_.GetSocketAddress(&listen_address));
+    CHECK_OK(listener_.GetSocketAddress(&listen_addr_));
+  }
 
+  Socket ConnectToListeningServer() {
+    Socket client;
+    CHECK_OK(client.Init(listen_addr_.family(), 0));
+    CHECK_OK(client.Connect(listen_addr_));
+    CHECK_OK(client.SetRecvTimeout(MonoDelta::FromMilliseconds(100)));
+    return client;
+  }
+
+  void DoTestServerDisconnects(const string& addr_str, bool accept, const std::string &message) {
+    NO_FATALS(BindAndListen(addr_str));
     std::thread t([&]{
       if (accept) {
         Sockaddr new_addr;
@@ -62,11 +80,7 @@ class SocketTest : public KuduTest {
       }
     });
 
-    Socket client;
-    ASSERT_OK(client.Init(0));
-    ASSERT_OK(client.Connect(listen_address));
-    CHECK_OK(client.SetRecvTimeout(MonoDelta::FromMilliseconds(100)));
-
+    Socket client = ConnectToListeningServer();
     int n;
     std::unique_ptr<uint8_t[]> buf(new uint8_t[kEchoChunkSize]);
     Status s = client.Recv(buf.get(), kEchoChunkSize, &n);
@@ -80,10 +94,17 @@ class SocketTest : public KuduTest {
 };
 
 TEST_F(SocketTest, TestRecvReset) {
-  DoTest(false, "recv error from 127.0.0.1:[0-9]+: Resource temporarily unavailable");
+  // IPv4.
+  DoTestServerDisconnects("0.0.0.0:0", false, "recv error from 127.0.0.1:[0-9]+: "
+                          "Resource temporarily unavailable");
+  // IPv6.
+  DoTestServerDisconnects("[::]:0", false,
+                          "recv error from \\[::1\\]:[0-9]+: "
+                          "Resource temporarily unavailable");
 }
 
 TEST_F(SocketTest, TestRecvEOF) {
-  DoTest(true, "recv got EOF from 127.0.0.1:[0-9]+");
+  DoTestServerDisconnects("0.0.0.0:0", true, "recv got EOF from 127.0.0.1:[0-9]+");
+  DoTestServerDisconnects("[::]:0", true, "recv got EOF from \\[::1\\]:[0-9]+");
 }
 } // namespace kudu

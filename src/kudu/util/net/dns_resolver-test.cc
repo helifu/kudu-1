@@ -54,7 +54,11 @@ TEST(DnsResolverTest, AsyncResolution) {
   ASSERT_TRUE(!addrs.empty());
   for (const Sockaddr& addr : addrs) {
     LOG(INFO) << "Address: " << addr.ToString();
-    EXPECT_TRUE(HasPrefixString(addr.ToString(), "127."));
+    if (AF_INET == addr.family()) {
+      EXPECT_TRUE(HasPrefixString(addr.ToString(), "127."));
+    } else {
+      EXPECT_TRUE(HasPrefixString(addr.ToString(), "[::1]"));
+    }
     EXPECT_TRUE(HasSuffixString(addr.ToString(), ":12345"));
   }
 }
